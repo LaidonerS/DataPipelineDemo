@@ -1,44 +1,78 @@
+using DataPipeline.Core;
+using DataPipeline.Core.Data;
+using DataPipeline.Core.Pipeline;
+using Microsoft.EntityFrameworkCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+// Connection string: SQLite file in root folder
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+                       ?? "Data Source=transactions.db";
+
+// Input folder for CSV files (../data/input relative to API project)
+var inputFolder = Path.Combine(builder.Environment.ContentRootPath, "..", "..", "data", "input");
+inputFolder = Path.GetFullPath(inputFolder);
+
+builder.Services.AddDataPipelineCore(connectionString, inputFolder);
+
+// Minimal API goodies
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Ensure DB exists / migrations applied
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+app.MapGet("/", () => Results.Redirect("/swagger"));
 
-var summaries = new[]
+app.MapPost("/pipeline/run", async (IDataPipeline pipeline, CancellationToken ct) =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
+    var count = await pipeline.RunAsync(ct);
+    return Results.Ok(new { inserted = count });
 })
-.WithName("GetWeatherForecast")
-.WithOpenApi();
+.WithName("RunPipeline")
+.WithSummary("Run the CSV → DB data pipeline")
+.WithDescription("Reads CSV files from data/input, validates rows, and stores them in SQLite.");
+
+app.MapGet("/transactions", async (AppDbContext db, int take = 100, CancellationToken ct = default) =>
+{
+    var items = await db.Transactions
+        .OrderByDescending(t => t.Timestamp)
+        .Take(take)
+        .ToListAsync(ct);
+
+    return Results.Ok(items);
+})
+.WithName("GetTransactions")
+.WithSummary("Get recent transactions");
+
+app.MapGet("/transactions/summary", async (AppDbContext db, CancellationToken ct = default) =>
+{
+    var summary = await db.Transactions
+        .GroupBy(t => t.Timestamp.Date)
+        .Select(g => new
+        {
+            Date = g.Key,
+            Count = g.Count(),
+            Total = g.Sum(t => t.Amount)
+        })
+        .OrderByDescending(x => x.Date)
+        .ToListAsync(ct);
+
+    return Results.Ok(summary);
+})
+.WithName("GetTransactionSummary")
+.WithSummary("Get daily aggregated transaction summary");
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}

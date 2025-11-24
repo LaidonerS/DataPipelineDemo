@@ -1,0 +1,4 @@
+Timestamp,Customer,Item,Amount,Currency
+2025-11-24T09:00:00Z,Alice,Apples,12.50,USD
+2025-11-24T10:15:00Z,Bob,Oranges,7.20,USD
+2025-11-24T11:45:00Z,Charlie,Bananas,4.99,USD
