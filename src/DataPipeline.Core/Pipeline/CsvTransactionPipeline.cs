@@ -10,6 +10,15 @@ public class CsvTransactionPipeline : IDataPipeline
     private readonly AppDbContext _db;
     private readonly string _inputFolder;
 
+    // Simple static FX rates to USD for demo purposes
+    private static readonly Dictionary<string, decimal> FxToUsd = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["USD"] = 1.0m,
+        ["EUR"] = 1.1m,
+        ["NOK"] = 0.095m,
+        ["THB"] = 0.028m
+    };
+
     public CsvTransactionPipeline(AppDbContext db, string? inputFolder = null)
     {
         _db = db;
@@ -58,13 +67,22 @@ public class CsvTransactionPipeline : IDataPipeline
                     continue;
                 }
 
+                var currency = parts[4].Trim().ToUpperInvariant();
+
+                // Transformations
+                var rate = FxToUsd.TryGetValue(currency, out var r) ? r : 1.0m;
+                var amountUsd = amount * rate;
+                var isHighValue = amountUsd >= 100m;
+
                 var transaction = new Transaction
                 {
                     Timestamp = timestamp,
                     Customer = parts[1].Trim(),
                     Item = parts[2].Trim(),
                     Amount = amount,
-                    Currency = parts[4].Trim()
+                    Currency = currency,
+                    AmountUsd = decimal.Round(amountUsd, 2),
+                    IsHighValue = isHighValue
                 };
 
                 transactions.Add(transaction);
@@ -74,8 +92,7 @@ public class CsvTransactionPipeline : IDataPipeline
         if (transactions.Count == 0)
             return 0;
 
-        // Ensure DB & migrations are applied
-	await _db.Database.EnsureCreatedAsync(cancellationToken);
+        await _db.Database.EnsureCreatedAsync(cancellationToken);
 
         await _db.Transactions.AddRangeAsync(transactions, cancellationToken);
         var inserted = await _db.SaveChangesAsync(cancellationToken);

@@ -39,7 +39,12 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.MapGet("/", () => Results.Redirect("/swagger"));
+// Serve static dashboard from wwwroot (index.html)
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
+// Optional tiny health endpoint
+app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
 
 // Manually trigger pipeline
 app.MapPost("/pipeline/run", async (IDataPipeline pipeline, CancellationToken ct) =>
