@@ -1,0 +1,25 @@
+# Build outputs
+bin/
+obj/
+
+# VS / Rider / tooling
+.vs/
+.idea/
+*.user
+*.suo
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# SQLite databases
+*.db
+
+# dotnet user secrets
+secrets.json
