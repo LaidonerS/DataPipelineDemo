@@ -75,7 +75,7 @@ public class CsvTransactionPipeline : IDataPipeline
             return 0;
 
         // Ensure DB & migrations are applied
-        await _db.Database.MigrateAsync(cancellationToken);
+	await _db.Database.EnsureCreatedAsync(cancellationToken);
 
         await _db.Transactions.AddRangeAsync(transactions, cancellationToken);
         var inserted = await _db.SaveChangesAsync(cancellationToken);
