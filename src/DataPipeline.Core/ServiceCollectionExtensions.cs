@@ -2,6 +2,7 @@ using DataPipeline.Core.Data;
 using DataPipeline.Core.Pipeline;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace DataPipeline.Core;
 
@@ -20,7 +21,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDataPipeline>(sp =>
         {
             var db = sp.GetRequiredService<AppDbContext>();
-            return new CsvTransactionPipeline(db, inputFolder);
+            var logger = sp.GetRequiredService<ILogger<CsvTransactionPipeline>>();
+            return new CsvTransactionPipeline(db, logger, inputFolder);
         });
 
         return services;
