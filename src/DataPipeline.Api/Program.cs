@@ -1,3 +1,4 @@
+using DataPipeline.Api.Services;
 using DataPipeline.Core;
 using DataPipeline.Core.Data;
 using DataPipeline.Core.Pipeline;
@@ -5,23 +6,27 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Connection string: SQLite file in root folder
+// Connection string: SQLite file in API project folder
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
                        ?? "Data Source=transactions.db";
 
-// Input folder for CSV files (../data/input relative to API project)
+// Input folder for CSV files: ../data/input relative to repo
 var inputFolder = Path.Combine(builder.Environment.ContentRootPath, "..", "..", "data", "input");
 inputFolder = Path.GetFullPath(inputFolder);
 
+// Core services: DbContext + pipeline
 builder.Services.AddDataPipelineCore(connectionString, inputFolder);
 
-// Minimal API goodies
+// Background worker that runs the pipeline periodically
+builder.Services.AddHostedService<PipelineWorker>();
+
+// Minimal API extras
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Ensure DB exists / migrations applied
+// Ensure database & Transactions table exist
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -36,6 +41,7 @@ if (app.Environment.IsDevelopment())
 
 app.MapGet("/", () => Results.Redirect("/swagger"));
 
+// Manually trigger pipeline
 app.MapPost("/pipeline/run", async (IDataPipeline pipeline, CancellationToken ct) =>
 {
     var count = await pipeline.RunAsync(ct);
@@ -45,6 +51,7 @@ app.MapPost("/pipeline/run", async (IDataPipeline pipeline, CancellationToken ct
 .WithSummary("Run the CSV → DB data pipeline")
 .WithDescription("Reads CSV files from data/input, validates rows, and stores them in SQLite.");
 
+// List recent transactions
 app.MapGet("/transactions", async (AppDbContext db, int take = 100, CancellationToken ct = default) =>
 {
     var items = await db.Transactions
@@ -57,6 +64,7 @@ app.MapGet("/transactions", async (AppDbContext db, int take = 100, Cancellation
 .WithName("GetTransactions")
 .WithSummary("Get recent transactions");
 
+// Daily summary
 app.MapGet("/transactions/summary", async (AppDbContext db, CancellationToken ct = default) =>
 {
     var summary = await db.Transactions
